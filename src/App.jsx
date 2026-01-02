@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useLocation, useParams } from 'react-router-dom'
 import {
   XAxis,
@@ -10,7 +10,7 @@ import {
   AreaChart,
   Area,
 } from 'recharts'
-import { Calculator, Info, Activity, Lock, Unlock, Zap, ChevronRight, Globe, Users, Sun, Moon } from 'lucide-react'
+import { Calculator, Info, Activity, Lock, Unlock, Zap, ChevronRight, Globe, Users, Sun, Moon, Search, X } from 'lucide-react'
 import './index.css'
 
 const navStructure = [
@@ -3961,6 +3961,77 @@ const navStructure = [
   },
 ]
 
+function collectContentText(node, locale) {
+  if (!node) return []
+  const texts = []
+  const push = (v) => {
+    if (typeof v === 'string' && v.trim()) texts.push(v)
+  }
+  push(node.title)
+  push(node.descriptionNl)
+  push(node.descriptionEn)
+  push(node.introNl)
+  push(node.introEn)
+  if (node.blocks) {
+    const blocks = node.blocks[locale] || []
+    blocks.forEach((b) => {
+      push(b.heading)
+      push(b.body)
+      push(b.pre)
+      if (Array.isArray(b.items)) b.items.forEach(push)
+    })
+  }
+  return texts
+}
+
+function buildSearchIndex(sections, locale) {
+  const index = []
+  sections.forEach((section) => {
+    const sectionPath = `/${section.slug}`
+    const baseTexts = collectContentText(section, locale)
+    index.push({
+      path: sectionPath,
+      title: section.title,
+      section: section.title,
+      content: baseTexts.join(' ').toLowerCase(),
+      snippet: (baseTexts.join(' ') || '').slice(0, 180),
+    })
+    if (Array.isArray(section.children)) {
+      section.children.forEach((child) => {
+        const childPath = `${sectionPath}/${child.slug}`
+        const childTexts = collectContentText(child, locale)
+        index.push({
+          path: childPath,
+          title: child.title,
+          section: section.title,
+          content: childTexts.join(' ').toLowerCase(),
+          snippet: (childTexts.join(' ') || '').slice(0, 180),
+        })
+      })
+    }
+  })
+  return index
+}
+
+function scoreMatch(item, query) {
+  const words = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!words.length) return 0
+  let score = 0
+  words.forEach((w) => {
+    if (item.title.toLowerCase().includes(w)) score += 6
+    if (item.section.toLowerCase().includes(w)) score += 2
+    if (item.content.includes(w)) score += 1
+  })
+  return score
+}
+
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function useNavState() {
   const location = useLocation()
   const [openSections, setOpenSections] = useState(() => new Set())
@@ -4034,6 +4105,27 @@ function ThemeToggle({ theme, onChange }) {
 function Navigation({ sections, locale, onLocaleChange, theme, onThemeChange }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const { openSections, toggleSection, isActivePath, isWithinSection } = useNavState()
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchIndex = useMemo(() => buildSearchIndex(sections, locale), [sections, locale])
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return []
+    const scored = searchIndex
+      .map((item) => ({ ...item, score: scoreMatch(item, searchQuery) }))
+      .filter((i) => i.score > 0)
+      .sort((a, b) => b.score - a.score)
+    return scored.slice(0, 30)
+  }, [searchQuery, searchIndex])
+
+  const highlightSnippet = (text, query) => {
+    if (!query.trim()) return text
+    const words = query
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(escapeRegExp)
+    if (!words.length) return text
+    const pattern = new RegExp(`(${words.join('|')})`, 'gi')
+    return text.replace(pattern, '<mark>$1</mark>')
+  }
 
   return (
     <>
@@ -4071,6 +4163,59 @@ function Navigation({ sections, locale, onLocaleChange, theme, onThemeChange }) 
             <ThemeToggle theme={theme} onChange={onThemeChange} />
             <LocaleToggle locale={locale} onChange={onLocaleChange} />
           </div>
+        </div>
+
+        <div className="px-3 pt-3 md:px-4">
+          <label className="flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-stone-400">
+            <Search size={16} className="text-stone-500" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={locale === 'en' ? 'Search topics…' : 'Zoek onderwerpen…'}
+              className="w-full bg-transparent text-sm outline-none placeholder:text-stone-400"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-stone-400 hover:text-stone-600"
+                aria-label="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </label>
+          {searchQuery && (
+            <div className="mt-2 max-h-60 overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-lg">
+              {searchResults.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-stone-500">
+                  {locale === 'en' ? 'No matches' : 'Geen resultaten'}
+                </div>
+              ) : (
+                <ul className="divide-y divide-stone-100">
+                  {searchResults.map((item) => (
+                    <li key={item.path}>
+                      <NavLink
+                        to={item.path}
+                        onClick={() => {
+                          setMenuOpen(false)
+                          setSearchQuery('')
+                        }}
+                        className="block px-3 py-2 hover:bg-stone-50"
+                      >
+                        <div className="text-sm font-semibold text-stone-900">{item.title}</div>
+                        <div className="text-[11px] uppercase tracking-[0.08em] text-stone-400">{item.section}</div>
+                        <div
+                          className="mt-1 text-sm text-stone-600 line-clamp-3"
+                          dangerouslySetInnerHTML={{ __html: highlightSnippet(item.snippet, searchQuery) }}
+                        />
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
 
         <nav className="max-h-[calc(100vh-56px)] overflow-y-auto md:max-h-none">
