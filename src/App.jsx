@@ -10,7 +10,7 @@ import {
   AreaChart,
   Area,
 } from 'recharts'
-import { Calculator, Info, Activity, Lock, Unlock, Zap, ChevronRight, Globe, Users, Sun, Moon, Search, X } from 'lucide-react'
+import { Calculator, Info, Activity, Lock, Unlock, Zap, ChevronRight, Globe, Users, Sun, Moon, Search, X, Play, Pause } from 'lucide-react'
 import './index.css'
 
 const navStructure = [
@@ -4106,6 +4106,8 @@ function Navigation({ sections, locale, onLocaleChange, theme, onThemeChange }) 
   const [menuOpen, setMenuOpen] = useState(false)
   const { openSections, toggleSection, isActivePath, isWithinSection } = useNavState()
   const [searchQuery, setSearchQuery] = useState('')
+  const [isPlaying, setIsPlaying] = useState(false)
+  const audioRef = useRef(null)
   const searchIndex = useMemo(() => buildSearchIndex(sections, locale), [sections, locale])
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return []
@@ -4127,6 +4129,35 @@ function Navigation({ sections, locale, onLocaleChange, theme, onThemeChange }) 
     return text.replace(pattern, '<mark>$1</mark>')
   }
 
+  useEffect(() => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio('/audio/Geld_laten_werken_tussen_betalen_en_ontvangen.m4a')
+    }
+    const audio = audioRef.current
+    const handleEnded = () => setIsPlaying(false)
+    audio.addEventListener('ended', handleEnded)
+    return () => {
+      audio.removeEventListener('ended', handleEnded)
+      audio.pause()
+    }
+  }, [])
+
+  const togglePlay = async () => {
+    const audio = audioRef.current
+    if (!audio) return
+    if (audio.paused) {
+      try {
+        await audio.play()
+        setIsPlaying(true)
+      } catch (e) {
+        console.error('Audio play failed', e)
+      }
+    } else {
+      audio.pause()
+      setIsPlaying(false)
+    }
+  }
+
   return (
     <>
       {/* Mobile top bar with hamburger + toggles */}
@@ -4136,6 +4167,14 @@ function Navigation({ sections, locale, onLocaleChange, theme, onThemeChange }) 
           <div className="flex flex-col gap-1 items-end">
             <ThemeToggle theme={theme} onChange={onThemeChange} />
             <LocaleToggle locale={locale} onChange={onLocaleChange} />
+            <button
+              onClick={togglePlay}
+              className="inline-flex items-center gap-1 rounded-md border border-stone-200 bg-white px-3 py-2 text-xs font-medium shadow-sm hover:bg-stone-50 text-stone-800"
+              aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+            >
+              {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+              {isPlaying ? (locale === 'en' ? 'Pause' : 'Pauze') : 'Play'}
+            </button>
           </div>
           <button
             onClick={() => setMenuOpen((o) => !o)}
@@ -4162,6 +4201,14 @@ function Navigation({ sections, locale, onLocaleChange, theme, onThemeChange }) 
           <div className="hidden flex-col gap-2 items-end md:flex">
             <ThemeToggle theme={theme} onChange={onThemeChange} />
             <LocaleToggle locale={locale} onChange={onLocaleChange} />
+            <button
+              onClick={togglePlay}
+              className="inline-flex items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-xs font-medium shadow-sm hover:bg-stone-50 text-stone-800"
+              aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+            >
+              {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+              {isPlaying ? (locale === 'en' ? 'Pause' : 'Pauze') : 'Play'}
+            </button>
           </div>
         </div>
 
